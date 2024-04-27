@@ -1,28 +1,105 @@
 const express = require('express');
 const router = express.Router();
+const { MongoClient, ObjectId } = require('mongodb');
 
-// Mock database
-const books = [
-    { id: 1, title: 'The Great Gatsby', author: 'F. Scott Fitzgerald', description: 'A classic novel about the American Dream', coverUrl: 'https://m.media-amazon.com/images/I/71V1cA2fiZL._AC_UF1000,1000_QL80_.jpg' },
-    { id: 2, title: 'To Kill a Mockingbird', author: 'Harper Lee', description: 'A powerful story of racial injustice and moral growth', coverUrl: 'https://m.media-amazon.com/images/I/41j-s9fHJcL.jpg' },
-    { id: 3, title: '1984', author: 'George Orwell', description: 'A dystopian novel exploring totalitarianism and surveillance', coverUrl: 'https://rukminim2.flixcart.com/image/850/1000/xif0q/book/m/c/5/-original-imagqtdt7tnzf8dk.jpeg?q=90&crop=false' }
-  ];
-  
+//const uri = 'mongodb://localhost:27017'; // MongoDB connection URI
+const uri = 'mongodb+srv://ramanathan1110:liLlR5Fq1s19CCrc@cluster0.yjhmrq2.mongodb.net';
+const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
 
-// Get all books
-router.get('/', (req, res) => {
-  res.json(books);
-});
+async function getBooksFromDB() {
+  try {
+    const db = client.db('library'); 
+    const collection = db.collection('books');
+    const books = await collection.find({}).toArray();
+    return books;
+  } catch (err) {
+    console.error('Error getting books from MongoDB:', err);
+    return [];
+  }
+}
+async function getBookById(bookId) {
+  try {
+    const db = client.db('library'); 
+    const collection = db.collection('books');
+    const book = await collection.findOne({ _id: new ObjectId(bookId) }); // Use new keyword
+    return book;
+  } catch (err) {
+    console.error('Error getting book by ID:', err);
+    return null;
+  }
+}
 
-// Get book by ID
-router.get('/:id', (req, res) => {
-  const id = parseInt(req.params.id);
-  const book = books.find(book => book.id === id);
-  if (book) {
-    res.json(book);
-  } else {
-    res.status(404).send('Book not found');
+async function getReviewsByBookId(bookId) {
+  try {
+    const db = client.db('library'); 
+    const collection = db.collection('books');
+    const book = await collection.findOne({ _id: new ObjectId(bookId) }); // Use new keyword
+    if (book) {
+      return book.reviews;
+    } else {
+      return [];
+    }
+  } catch (err) {
+    console.error('Error getting reviews by book ID:', err);
+    return [];
+  }
+}
+
+
+router.get('/', async (req, res) => {
+  try {
+    const books = await getBooksFromDB();
+    res.json(books);
+  } catch (err) {
+    res.status(500).send('Internal Server Error');
   }
 });
 
+router.get('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const book = await getBookById(id);
+    if (book) {
+      res.json(book);
+    } else {
+      res.status(404).send('Book not found');
+    }
+  } catch (err) {
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+router.get('/:id/reviews', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const book = await getReviewsByBookId(id);
+    if (book) {
+      res.json(book);
+    } else {
+      res.status(404).send('Book not found');
+    }
+  } catch (err) {
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+router.post('/:id/reviews', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const review = req.body;
+    const db = client.db('library');
+    const collection = db.collection('books');
+    const result = await collection.updateOne(
+      { _id: new ObjectId(id) },
+      { $push: { reviews: review } }
+    );
+    if (result.matchedCount > 0) {
+      res.status(201).send('Review added successfully');
+    } else {
+      res.status(404).send('Book not found');
+    }
+  } catch (err) {
+    res.status(500).send('Internal Server Error');
+  }
+});
 module.exports = router;
